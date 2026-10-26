@@ -1,3 +1,4 @@
+
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../data/models/doctor_model.dart';
@@ -14,6 +15,7 @@ class DoctorBloc extends Bloc<DoctorEvent, DoctorState> {
     required this.repository,
   }) : super(const DoctorInitial()) {
     on<LoadDoctors>(_onLoadDoctors);
+    on<LoadDoctorProfile>(_onLoadDoctorProfile);
     on<SearchDoctors>(_onSearchDoctors);
     on<FilterDoctorsBySpecialization>(
       _onFilterDoctorsBySpecialization,
@@ -25,9 +27,11 @@ class DoctorBloc extends Bloc<DoctorEvent, DoctorState> {
   List<SpecializationModel> _allSpecializations = [];
 
   List<DoctorModel> get allDoctors => List.unmodifiable(_allDoctors);
+
   List<SpecializationModel> get allSpecializations =>
       List.unmodifiable(_allSpecializations);
 
+  /// Load all verified doctors and active specializations.
   Future<void> _onLoadDoctors(
     LoadDoctors event,
     Emitter<DoctorState> emit,
@@ -55,21 +59,50 @@ class DoctorBloc extends Bloc<DoctorEvent, DoctorState> {
     } catch (e) {
       emit(
         const DoctorError(
-          'Failed to load doctors and specializations. Please check your connection and try again.',
+          'Failed to load doctors and specializations. '
+          'Please check your connection and try again.',
         ),
       );
     }
   }
 
+  /// Load one verified doctor's profile.
+  Future<void> _onLoadDoctorProfile(
+    LoadDoctorProfile event,
+    Emitter<DoctorState> emit,
+  ) async {
+    emit(const DoctorProfileLoading());
+
+    try {
+      final doctor = await repository.getDoctorById(event.doctorId);
+
+      if (doctor == null) {
+        emit(const DoctorProfileNotFound());
+        return;
+      }
+
+      emit(DoctorProfileLoaded(doctor));
+    } catch (e) {
+      emit(
+        const DoctorProfileError(
+          'Unable to load this doctor profile. Please try again.',
+        ),
+      );
+    }
+  }
+
+  /// Search doctors by name, optionally retaining the specialization filter.
   Future<void> _onSearchDoctors(
     SearchDoctors event,
     Emitter<DoctorState> emit,
   ) async {
     final query = event.query.trim();
     final currentState = state;
-    final String? activeSpecializationId = currentState is DoctorLoaded
-        ? currentState.selectedSpecializationId
-        : null;
+
+    final String? activeSpecializationId =
+        currentState is DoctorLoaded
+            ? currentState.selectedSpecializationId
+            : null;
 
     if (query.isEmpty) {
       if (activeSpecializationId != null) {
@@ -77,6 +110,7 @@ class DoctorBloc extends Bloc<DoctorEvent, DoctorState> {
           final doctors = await repository.getDoctorsBySpecialization(
             activeSpecializationId,
           );
+
           emit(
             DoctorLoaded(
               doctors: doctors,
@@ -89,7 +123,10 @@ class DoctorBloc extends Bloc<DoctorEvent, DoctorState> {
           emit(
             DoctorLoaded(
               doctors: _allDoctors
-                  .where((d) => d.specializationId == activeSpecializationId)
+                  .where(
+                    (doctor) =>
+                        doctor.specializationId == activeSpecializationId,
+                  )
                   .toList(),
               specializations: List.from(_allSpecializations),
               selectedSpecializationId: activeSpecializationId,
@@ -107,6 +144,7 @@ class DoctorBloc extends Bloc<DoctorEvent, DoctorState> {
           ),
         );
       }
+
       return;
     }
 
@@ -135,15 +173,17 @@ class DoctorBloc extends Bloc<DoctorEvent, DoctorState> {
     }
   }
 
+  /// Filter doctors by specialization.
   Future<void> _onFilterDoctorsBySpecialization(
     FilterDoctorsBySpecialization event,
     Emitter<DoctorState> emit,
   ) async {
     final currentState = state;
+
     final bool isAlreadySelected = currentState is DoctorLoaded &&
         currentState.selectedSpecializationId == event.specializationId;
 
-    // Toggle filter: tapping active category deselects it
+    // Tapping the selected category clears the filter.
     if (isAlreadySelected) {
       emit(
         DoctorLoaded(
@@ -180,6 +220,7 @@ class DoctorBloc extends Bloc<DoctorEvent, DoctorState> {
     }
   }
 
+  /// Clear active search and specialization filters.
   void _onClearDoctorFilter(
     ClearDoctorFilter event,
     Emitter<DoctorState> emit,

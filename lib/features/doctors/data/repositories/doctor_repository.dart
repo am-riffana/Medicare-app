@@ -1,3 +1,4 @@
+
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../../core/config/supabase_config.dart';
@@ -41,6 +42,21 @@ class DoctorRepository {
           ),
         )
         .toList();
+  }
+
+  Future<DoctorModel?> getDoctorById(String doctorId) async {
+    final response = await _client
+        .from('doctors')
+        .select()
+        .eq('id', doctorId)
+        .eq('is_verified', true)
+        .maybeSingle();
+
+    if (response == null) {
+      return null;
+    }
+
+    return DoctorModel.fromJson(response);
   }
 
   Future<List<DoctorModel>> searchDoctors(
